@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "clearjav-aio"
+dynamic = ["version"]
+description = "Upload DMM WEB-DLs and disc Remuxes to ClearJAV: contact sheet, MediaInfo, torrent, upload and seeding."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = ["requests>=2.31", "keyring>=24; sys_platform == 'win32' or sys_platform == 'darwin'"]
+
+[project.scripts]
+clearjav-aio = "clearjav_aio.cli:main"
+
+[tool.setuptools]
+packages = ["clearjav_aio"]
+
+[tool.setuptools.package-data]
+clearjav_aio = ["fonts/*", "web/*"]
+
+[tool.setuptools.dynamic]
+version = { attr = "clearjav_aio.__version__" }

@@ -1,0 +1,231 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark light">
+<title>ClearJAV Uploader</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/app.css">
+<script src="/app.js" defer></script>
+</head>
+<body>
+<!-- ClearJAV's wordmark (docs/brand/svg/wordmark-blue.svg in the site's repository), drawn in the theme's colors. -->
+<svg class="defs" aria-hidden="true" focusable="false">
+  <defs>
+    <path id="wordmark-path" d="M560 130L158.6 130A28.6 28.6 0 0 0 130 158.6L130 541.4A28.6 28.6 0 0 0 158.6 570L560 570L560 700L158.6 700A158.6 158.6 0 0 1 0 541.4L0 158.6A158.6 158.6 0 0 1 158.6 0L560 0ZM624 0L754 0L754 700L624 700ZM883 387L1168.12 387A9.88 9.88 0 0 0 1178 377.12L1178 358.6A28.6 28.6 0 0 0 1149.4 330L976.6 330A28.6 28.6 0 0 0 948 358.6L948 541.4A28.6 28.6 0 0 0 976.6 570L1302 570L1302 700L976.6 700A158.6 158.6 0 0 1 818 541.4L818 358.6A158.6 158.6 0 0 1 976.6 200L1149.4 200A158.6 158.6 0 0 1 1308 358.6L1308 377.12A139.88 139.88 0 0 1 1168.12 517L883 517ZM1376 200L1703.4 200A158.6 158.6 0 0 1 1862 358.6L1862 700L1732 700L1732 358.6A28.6 28.6 0 0 0 1703.4 330L1376 330ZM1797 521L1511.88 521A9.88 9.88 0 0 0 1502 530.88L1502 560.12A9.88 9.88 0 0 0 1511.88 570L1797 570L1797 700L1511.88 700A139.88 139.88 0 0 1 1372 560.12L1372 530.88A139.88 139.88 0 0 1 1511.88 391L1797 391ZM1926 700L1926 358.6A158.6 158.6 0 0 1 2084.6 200L2296 200L2296 330L2084.6 330A28.6 28.6 0 0 0 2056 358.6L2056 700ZM1926 200L2056 200L2056 358.6L1926 358.6ZM1926 200L2084.6 200L2084.6 330L1926 330ZM2772 0L2772 541.4A158.6 158.6 0 0 1 2613.4 700L2460.6 700A158.6 158.6 0 0 1 2302 541.4L2302 465L2432 465L2432 541.4A28.6 28.6 0 0 0 2460.6 570L2613.4 570A28.6 28.6 0 0 0 2642 541.4L2642 0ZM2836 700L2836 158.6A158.6 158.6 0 0 1 2994.6 0L3297.4 0A158.6 158.6 0 0 1 3456 158.6L3456 700L3326 700L3326 158.6A28.6 28.6 0 0 0 3297.4 130L2994.6 130A28.6 28.6 0 0 0 2966 158.6L2966 700ZM2962 420L3330 420L3330 531.8L2962 531.8ZM3642 0L3642 308.34A0.52 0.52 0 0 0 3642.1 308.65L3822 550.96L4001.9 308.65A0.52 0.52 0 0 0 4002 308.34L4002 0L4132 0L4132 308.34A130.52 130.52 0 0 1 4106.28 386.14L3896.73 668.38A93.08 93.08 0 0 1 3747.27 668.38L3537.72 386.14A130.52 130.52 0 0 1 3512 308.34L3512 0Z"/>
+  </defs>
+</svg>
+
+<header class="top">
+  <div class="gut"><div class="box-w topbar">
+    <div class="brand">
+      <svg class="word" viewBox="0 0 4132 700" role="img" aria-label="ClearJAV"><use href="#wordmark-path" class="logo-fill"/></svg>
+      <svg class="seal" viewBox="0 0 16 16" role="img" aria-label="ClearJAV"><path class="logo-fill" d="M2 0L14 0A2 2 0 0 1 16 2L16 14A2 2 0 0 1 14 16L2 16A2 2 0 0 1 0 14L0 2A2 2 0 0 1 2 0Z"/><path class="logo-ink" d="M2 2L7 2L7 4L2 4ZM5 2L7 2L7 5L5 5ZM2 2L4 2L4 14L2 14ZM2 12L7 12L7 14L2 14ZM5 11L7 11L7 14L5 14ZM12 2L14 2L14 14L12 14ZM9 12L14 12L14 14L9 14ZM9 10L11 10L11 14L9 14Z"/></svg>
+      <span class="app">Uploader</span>
+    </div>
+    <nav class="tabs" role="tablist" aria-label="Uploader">
+      <button type="button" role="tab" aria-selected="true" aria-controls="tab-upload" id="tabUpload" data-tab="upload"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 16V4M6 10l6-6 6 6M4 20h16"/></svg>Upload <span class="n" id="askCount" hidden></span></button>
+      <button type="button" role="tab" aria-selected="false" aria-controls="tab-settings" id="tabSettings" data-tab="settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/></svg>Settings</button>
+      <button type="button" role="tab" aria-selected="false" aria-controls="tab-log" id="tabLog" data-tab="log"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01"/></svg>Log</button>
+    </nav>
+    <div class="status" role="group" aria-label="Status">
+      <span class="stat off" id="whoStatus">Starting…</span>
+      <span class="stat off" id="seedStatus"></span>
+      <span class="stat off" id="toolStatus"></span>
+    </div>
+    <button type="button" class="iconbtn" id="themeBtn" aria-label="Switch to the light theme" title="Light or dark">
+      <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1Zm0 1.5v11a5.5 5.5 0 0 1 0-11Z"/></svg>
+    </button>
+  </div></div>
+</header>
+
+<div class="toast" id="toast" role="alert" hidden></div>
+
+<main class="gut"><div class="box-w page">
+  <!-- UPLOAD -->
+  <section id="tab-upload" class="stack" role="tabpanel" aria-labelledby="tabUpload">
+    <div class="box ask" id="setupNote" hidden></div>
+    <div class="grid">
+      <aside class="stack">
+        <div class="panel">
+          <div class="panel__head"><h2><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/></svg>Upload options</h2></div>
+          <div class="panel__body">
+            <div class="field" role="radiogroup" aria-labelledby="renameLabel"><span class="legend" id="renameLabel">Rename the video to</span>
+              <div class="choices">
+                <label class="choice" for="optRenameCid"><input type="radio" name="rename" value="content_id" data-opt="rename" id="optRenameCid" aria-label="Rename to the CID (recommended)" aria-describedby="optRenameCidHint"><b>CID <span class="tag rec">Recommended</span></b><span class="mono" id="optRenameCidHint">ipzz00020.mkv</span></label>
+                <label class="choice" for="optRenameDvd"><input type="radio" name="rename" value="dvd_id" data-opt="rename" id="optRenameDvd" aria-label="Rename to the DVD-ID" aria-describedby="optRenameDvdHint"><b>DVD-ID</b><span class="mono" id="optRenameDvdHint">IPZZ-020.mkv</span></label>
+                <label class="choice" for="optRenameTitle"><input type="radio" name="rename" value="title" data-opt="rename" id="optRenameTitle" aria-label="Rename to the Torrent Title" aria-describedby="optRenameTitleHint"><b>Torrent Title</b><span class="mono" id="optRenameTitleHint">IPZZ-020 2023-04-07 1080p DMM WEB-DL H.264 AAC.mkv</span></label>
+              </div>
+            </div>
+            <label class="check" for="optAnonymous"><input type="checkbox" data-opt="anonymous" id="optAnonymous" aria-label="Upload anonymously"><span>Upload anonymously</span></label>
+            <label class="check" for="optPersonal"><input type="checkbox" data-opt="personal_release" id="optPersonal" aria-label="Personal release" aria-describedby="optPersonalHint"><span>Personal release <small id="optPersonalHint">you made it yourself; may carry your tag</small></span></label>
+            <label class="field" id="tagField" for="optTag" hidden><span>Your release tag <small>(optional)</small></span><input type="text" data-opt="tag" id="optTag" aria-label="Your release tag (optional)" maxlength="31" autocomplete="off"></label>
+            <label class="check" id="modqField" for="optModQueue" hidden><input type="checkbox" data-opt="mod_queue" id="optModQueue" aria-label="Send to the moderation queue anyway" aria-describedby="optModQueueHint"><span>Send to the moderation queue anyway <small id="optModQueueHint">your uploads normally skip it</small></span></label>
+            <div class="hint" id="modqNote" hidden>Your uploads wait in the moderation queue until staff approve them.</div>
+            <label class="check" for="optAllowDuplicates"><input type="checkbox" data-opt="allow_duplicates" id="optAllowDuplicates" aria-label="Upload even if ClearJAV already has the video" aria-describedby="optAllowDuplicatesHint"><span>Upload even if ClearJAV already has the video <small id="optAllowDuplicatesHint">otherwise each one asks you</small></span></label>
+            <label class="check" for="optDryRun"><input type="checkbox" data-opt="dry_run" id="optDryRun" aria-label="Test run" aria-describedby="optDryRunHint"><span>Test run <small id="optDryRunHint">makes the title, contact sheet and torrent; uploads nothing</small></span></label>
+            <div class="field"><span id="outputDirLabel">Save .torrent files, contact sheets and MediaInfo in</span>
+              <div class="inline"><input type="text" class="mono" data-opt="output_dir" id="optOutputDir" aria-label="Save .torrent files, contact sheets and MediaInfo in" placeholder="next to each video (clearjav-uploads)"><button type="button" class="btn small" data-pick="output_dir" aria-label="Choose the folder for .torrent files, contact sheets and MediaInfo">Choose…</button></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel staff" id="staffPanel" hidden>
+          <div class="panel__head"><h2><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l8 3v6c0 4.5-3.4 8.2-8 9-4.6-.8-8-4.5-8-9V6z"/></svg>Staff and internal options</h2><span class="tag" id="staffTag"></span></div>
+          <div class="panel__body">
+            <label class="check" for="optInternal"><input type="checkbox" data-opt="internal" id="optInternal" aria-label="Internal release" aria-describedby="optInternalHint"><span>Internal release <small id="optInternalHint">title ends in -ClearJAV</small></span></label>
+            <div class="row2">
+              <label class="field" for="optFreeleech"><span>Freeleech</span>
+                <select data-opt="freeleech" id="optFreeleech" aria-label="Freeleech"><option value="0">None</option><option value="25">25%</option><option value="50">50%</option><option value="75">75%</option><option value="100">100%</option></select></label>
+              <label class="field" for="optFreeleechDays"><span>Days</span><input type="number" min="1" max="365" placeholder="no end" data-opt="freeleech_days" id="optFreeleechDays" aria-label="Freeleech days"></label>
+            </div>
+            <div class="row2">
+              <label class="check middle" for="optDoubleUpload"><input type="checkbox" data-opt="double_upload" id="optDoubleUpload" aria-label="Double upload"><span>Double upload</span></label>
+              <label class="field" for="optDoubleUploadDays"><span>Days</span><input type="number" min="1" max="365" placeholder="no end" data-opt="double_upload_days" id="optDoubleUploadDays" aria-label="Double upload days"></label>
+            </div>
+            <label class="check" for="optSticky"><input type="checkbox" data-opt="sticky" id="optSticky" aria-label="Sticky" aria-describedby="optStickyHint"><span>Sticky <small id="optStickyHint">pinned to the top of the torrent list</small></span></label>
+            <label class="check" for="optRefundable"><input type="checkbox" data-opt="refundable" id="optRefundable" aria-label="Refundable"><span>Refundable</span></label>
+            <label class="check" id="featuredField" for="optFeatured"><input type="checkbox" data-opt="featured" id="optFeatured" aria-label="Featured" aria-describedby="optFeaturedHint"><span>Featured <small id="optFeaturedHint">added to the featured slider</small></span></label>
+            <div class="note">These apply to every video uploaded in this run and are not remembered.</div>
+          </div>
+        </div>
+      </aside>
+
+      <div class="panel" id="listPanel">
+        <div class="panel__head qhead">
+          <h2><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M10 9.5v5l4-2.5z"/></svg>Videos to upload</h2>
+          <div class="counts" id="counts"></div>
+        </div>
+        <form class="add" id="addForm">
+          <input type="text" id="addPath" class="mono" placeholder="Paste a video or folder path, e.g. D:\Videos" aria-label="Video file or folder" autocomplete="off">
+          <button type="button" class="btn" id="browseBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>Browse…</button>
+          <label class="check middle" for="recursive"><input type="checkbox" id="recursive" aria-label="Also look in subfolders"><span>Subfolders</span></label>
+          <button type="submit" class="btn">Add</button>
+        </form>
+        <div id="queue" class="covers"></div>
+        <div class="qfoot">
+          <button type="button" class="btn small" id="clearBtn">Clear finished</button>
+          <button type="button" class="btn small" id="stopBtn" hidden>Stop after this video</button>
+          <button type="button" class="btn primary" id="startBtn" disabled><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 16V4M6 10l6-6 6 6M4 20h16"/></svg><span id="startText">Start</span></button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- SETTINGS -->
+  <section id="tab-settings" class="cols" role="tabpanel" aria-labelledby="tabSettings" hidden>
+    <div class="panel">
+      <div class="panel__head"><h2><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="15" r="4"/><path d="M11 12l9-9M17 6l3 3"/></svg>ClearJAV account</h2></div>
+      <div class="panel__body">
+        <label class="field" for="keyInput"><span>API key <small>clearjav.com → your profile → Settings → API Key</small></span>
+          <input type="password" id="keyInput" aria-label="API key" placeholder="paste to save or replace the key" autocomplete="off"></label>
+        <div class="inline">
+          <button type="button" class="btn primary" id="keySave">Save and check</button>
+          <button type="button" class="btn" id="keyForget">Forget key</button>
+        </div>
+        <div class="note" id="keyState"></div>
+        <label class="field" for="announceInput"><span>Your announce URL <small>clearjav.com → Upload page → "Announce URL"</small></span>
+          <input type="password" id="announceInput" aria-label="Your announce URL" class="mono" placeholder="https://clearjav.net/your-passkey" autocomplete="off"></label>
+        <div class="inline">
+          <button type="button" class="btn" id="announceSave">Save</button>
+          <button type="button" class="btn" id="announceForget">Forget</button>
+        </div>
+        <div class="note" id="announceState"></div>
+        <div class="hint">Paste the announce URL once: it goes into every .torrent the tool makes, so the file is a normal private ClearJAV torrent from the start. The site still makes its own .torrent on upload, and the tool seeds that one. The key and the announce URL hold your passkey: they are kept in <span class="storeName">the place shown above</span>, and never written to the log.</div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel__head"><h2><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20V10M12 10c0-4 3-6 7-6 0 4-3 6-7 6zM12 13c0-3-2.5-5-6-5 0 3.5 2.5 5 6 5z"/></svg>Seeding</h2></div>
+      <div class="panel__body">
+        <div class="note" id="seedLabel">After the upload the tool downloads the site's .torrent (the one to seed) and:</div>
+        <div class="choices" role="radiogroup" aria-labelledby="seedLabel">
+          <label class="choice" for="seedSaveMode"><input type="radio" name="seed" value="save" id="seedSaveMode" aria-label="Only saves it" aria-describedby="seedSaveHint"><b>Only saves it</b><span class="note" id="seedSaveHint">you add it to your torrent client yourself</span></label>
+          <label class="choice" for="seedWatchMode"><input type="radio" name="seed" value="watch" id="seedWatchMode" aria-label="Puts it in a watch folder" aria-describedby="seedWatchHint"><b>Puts it in a watch folder</b><span class="note" id="seedWatchHint">for a client that watches a folder (qBittorrent, Transmission, Deluge, rTorrent …)</span></label>
+          <label class="choice" for="seedQbMode"><input type="radio" name="seed" value="qbittorrent" id="seedQbMode" aria-label="Adds it to qBittorrent" aria-describedby="seedQbHint"><b>Adds it to qBittorrent</b><span class="note" id="seedQbHint">through its Web UI: seeds at once, from the video's own folder</span></label>
+        </div>
+        <div class="field" id="watchFields" hidden><span id="watchLabel">Watch folder</span>
+          <div class="inline"><input type="text" class="mono" id="watchDir" aria-label="Watch folder"><button type="button" class="btn small" data-pick="watch_dir" aria-label="Choose the watch folder">Choose…</button></div>
+          <div class="hint">The client must save these torrents into the folder where your videos are, or it downloads the video again instead of seeding it. qBittorrent can do that per watch folder ("Monitored folders" → "Download to"); otherwise use "Adds it to qBittorrent".</div>
+        </div>
+        <div class="stack tight" id="qbFields" hidden>
+          <label class="field" for="qbUrl"><span>Web UI address</span><input type="text" id="qbUrl" aria-label="qBittorrent Web UI address" class="mono" placeholder="http://127.0.0.1:8080"></label>
+          <div class="row2 even">
+            <label class="field" for="qbUser"><span>User name</span><input type="text" id="qbUser" aria-label="qBittorrent user name" autocomplete="off"></label>
+            <label class="field" for="qbPass"><span>Password</span><input type="password" id="qbPass" aria-label="qBittorrent password" autocomplete="off"></label>
+          </div>
+          <label class="field" for="qbCat"><span>Category <small>(optional)</small></span><input type="text" id="qbCat" aria-label="qBittorrent category (optional)"></label>
+          <div class="hint">qBittorrent's Web UI (Tools → Options → Web UI) has its own login; that is why it is asked here. The password is kept in <span class="storeName">the same place as the API key</span>.</div>
+        </div>
+        <label class="check" for="cleanUp"><input type="checkbox" id="cleanUp" aria-label="Delete the files the tool made after a successful upload" aria-describedby="cleanUpHint"><span>Delete the files the tool made after a successful upload
+          <small id="cleanUpHint">the contact sheets and the MediaInfo text; the .torrent to seed is kept when it is only saved or put in a watch folder, and deleted once qBittorrent has it</small></span></label>
+        <div class="inline">
+          <button type="button" class="btn primary" id="seedSave">Save</button>
+          <button type="button" class="btn" id="qbTest" hidden>Test qBittorrent</button>
+          <span class="note" id="seedState"></span>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel__head"><h2><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 9l3 3-3 3M13 15h4"/></svg>Programs</h2></div>
+      <div class="panel__body">
+        <div class="tools" id="toolList"></div>
+        <div class="hint" id="toolHelp"></div>
+        <details>
+          <summary>Use other copies</summary>
+          <div class="stack tight">
+            <label class="field" for="pathMediainfo"><span>MediaInfo (CLI)</span><input type="text" class="mono" id="pathMediainfo" aria-label="MediaInfo (CLI)" placeholder="found automatically"></label>
+            <label class="field" for="pathFfmpeg"><span>ffmpeg</span><input type="text" class="mono" id="pathFfmpeg" aria-label="ffmpeg" placeholder="found automatically"></label>
+            <label class="field" for="pathFfprobe"><span>ffprobe</span><input type="text" class="mono" id="pathFfprobe" aria-label="ffprobe" placeholder="found automatically"></label>
+            <button type="button" class="btn start" id="toolsSave">Save</button>
+          </div>
+        </details>
+        <div class="inline"><button type="button" class="btn" id="doctorBtn">Check setup again</button></div>
+        <div class="note" id="filesNote"></div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel__head"><h2><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="M21 16l-5-5-9 9"/></svg>Page</h2></div>
+      <div class="panel__body">
+        <label class="check" for="coversOn"><input type="checkbox" id="coversOn" aria-label="Show covers in the list" aria-describedby="coversHint"><span>Show covers in the list
+          <small id="coversHint">the covers are DMM's pictures, loaded through the uploader from DMM's image server</small></span></label>
+      </div>
+    </div>
+  </section>
+
+  <!-- LOG -->
+  <section id="tab-log" role="tabpanel" aria-labelledby="tabLog" hidden>
+    <div class="panel">
+      <div class="panel__head"><h2><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01"/></svg>Log</h2><span class="note" id="logNote"></span></div>
+      <div class="log" id="log" aria-live="polite" aria-label="Log"></div>
+    </div>
+  </section>
+</div></main>
+
+<footer class="foot gut"><div class="box-w">
+  <svg class="word" viewBox="0 0 4132 700" role="img" aria-label="ClearJAV"><use href="#wordmark-path"/></svg>
+  <span id="footAddress">Uploader <span id="version"></span> · runs only on this computer, at <span class="mono" id="footHost">127.0.0.1</span>. Keep its window open while it works.</span>
+  <button type="button" class="btn small" id="quitBtn">Quit the uploader</button>
+</div></footer>
+
+<div class="scrim" id="browse" hidden>
+  <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="browseTitle">
+    <header id="browseTitle">Choose videos or folders</header>
+    <div class="crumb"><button type="button" class="btn small" id="browseUp" aria-label="Up one folder">Up</button><span class="mono" id="browsePath"></span></div>
+    <div class="list" id="browseList"></div>
+    <footer>
+      <span class="note" id="browseHint">Click a folder to open it; tick videos or folders to add.</span>
+      <button type="button" class="btn" id="browseCancel">Cancel</button>
+      <button type="button" class="btn primary" id="browseOk">Add selected</button>
+    </footer>
+  </div>
+</div>
+
+<div class="scrim" id="goodbye" hidden>
+  <div class="dialog small" role="alertdialog" aria-labelledby="goodbyeTitle" aria-describedby="goodbyeText"><header id="goodbyeTitle">The uploader doesn't answer</header><div class="pad" id="goodbyeText">If you quit it or closed its window, you can close this tab. Otherwise this page keeps trying.</div></div>
+</div>
+</body>
+</html>

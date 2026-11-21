@@ -1,0 +1,13 @@
+__pycache__/
+*.py[cod]
+build/
+dist/
+*.egg-info/
+.venv/
+clearjav-uploads/
+*.mkv
+*.mp4
+*.wmv
+*.dcv
+*.torrent
+.pytest_cache/
