@@ -45,6 +45,15 @@ LIMIT_TEXT = "4 MB"
 AIM_BYTES = 4_000_000
 SPARSER_INTERVALS = (600, 900, 1200, 1800)
 WEBP_QUALITIES = (90, 80, 70, 60, 50)
+# Reading the filters from a file: `-/filter:v FILE` since FFmpeg 7 (newer releases no longer know -filter_script),
+# `-filter_script:v FILE` before. The one an FFmpeg answered is remembered per program.
+FILTER_OPTIONS = ("-/filter:v", "-filter_script:v")
+_FILTER_OPTION: dict[str, str] = {}
+
+
+def _filter_options(ffmpeg: str) -> tuple[str, ...]:
+    known = _FILTER_OPTION.get(ffmpeg)
+    return (known,) if known else FILTER_OPTIONS
 
 
 def megabytes(size: int) -> str:
@@ -240,11 +249,19 @@ def make(video: Path, output: Path, tool_paths: tools.Tools, progress: Callable[
     def write(quality: int) -> int:
         """Encode the picture (the raw canvas and the texts, never a smaller copy) and return the file's size."""
         codec = [str(c).format(quality=quality) for c in codecs[suffix]]
-        cmd = [tool_paths.ffmpeg, "-v", "error", "-nostdin", "-y", "-f", "rawvideo", "-pix_fmt", "rgb24",
-               "-s", f"{WIDTH}x{height}", "-i", "canvas.rgb", "-filter_script:v", "filters.txt", "-frames:v", "1", *codec, target.name]
-        result = subprocess.run([str(c) for c in cmd], cwd=work, capture_output=True, timeout=600, creationflags=tools.NO_WINDOW)
-        if result.returncode != 0 or not target.exists() or target.stat().st_size == 0:
+        ffmpeg = str(tool_paths.ffmpeg)
+        for filter_option in _filter_options(ffmpeg):
+            cmd = [ffmpeg, "-v", "error", "-nostdin", "-y", "-f", "rawvideo", "-pix_fmt", "rgb24",
+                   "-s", f"{WIDTH}x{height}", "-i", "canvas.rgb", filter_option, "filters.txt", "-frames:v", "1", *codec,
+                   target.name]
+            result = subprocess.run([str(c) for c in cmd], cwd=work, capture_output=True, timeout=600,
+                                    creationflags=tools.NO_WINDOW)
             message = result.stderr.decode("utf-8", "replace").strip().splitlines()
+            if result.returncode != 0 and any(f"Unrecognized option '{filter_option[1:]}'" in line for line in message):
+                continue  # this FFmpeg doesn't know that way of reading the filters from a file: try the other one
+            _FILTER_OPTION[ffmpeg] = filter_option
+            break
+        if result.returncode != 0 or not target.exists() or target.stat().st_size == 0:
             raise SheetError(f"FFmpeg could not write the contact sheet: {message[-1] if message else 'no output'}")
         return target.stat().st_size
 

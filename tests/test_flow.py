@@ -502,6 +502,32 @@ class FlowTest(unittest.TestCase):
                               str(contact_sheet.make(tall, self.dir / "t.webp", TOOLS))], capture_output=True, text=True).stdout.strip()
         self.assertEqual(out, "1024,307")  # one row of 4:3 shots (340x254)
 
+    def test_contact_sheet_with_either_way_of_reading_the_filters(self):
+        """Newer FFmpeg releases no longer know -filter_script; FFmpeg before 7 doesn't know -/filter."""
+        video = make_clip(self.dir / "abc00123.mkv", seconds=60, size="640x480")
+        real_run = subprocess.run
+        for unknown in contact_sheet.FILTER_OPTIONS:
+            with self.subTest(unknown=unknown):
+                contact_sheet._FILTER_OPTION.clear()
+                calls = []
+
+                def run(cmd, *args, **kwargs):
+                    if "canvas.rgb" in cmd:
+                        calls.append(next(c for c in cmd if c in contact_sheet.FILTER_OPTIONS))
+                        if unknown in cmd:  # as an FFmpeg answers an option it doesn't know
+                            return subprocess.CompletedProcess(cmd, 1, b"", f"Unrecognized option '{unknown[1:]}'.\r\n"
+                                                               "Error splitting the argument list: Option not found\r\n".encode())
+                    return real_run(cmd, *args, **kwargs)
+
+                with mock.patch.object(contact_sheet.subprocess, "run", side_effect=run):
+                    sheet = contact_sheet.make(video, self.dir / f"s{len(unknown)}.webp", TOOLS)
+                    contact_sheet.make(video, self.dir / f"again{len(unknown)}.webp", TOOLS)
+                self.assertGreater(sheet.stat().st_size, 0)
+                other = next(o for o in contact_sheet.FILTER_OPTIONS if o != unknown)
+                # The first sheet finds out which one this FFmpeg knows; the next ones use it at once.
+                self.assertEqual(calls, ([unknown] if calls[0] == unknown else []) + [other, other])
+        contact_sheet._FILTER_OPTION.clear()
+
 
 class CliTest(unittest.TestCase):
     def setUp(self):
