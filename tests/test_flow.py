@@ -141,7 +141,7 @@ class FlowTest(unittest.TestCase):
 
     def test_dvd_remux(self):
         make_clip(self.dir / "abc00123.mkv", seconds=4, size="720x480", codec="mpeg2video", audio="ac3", rate=30,
-                  extra=["-flags", "+ildct+ilme", "-top", "1"])
+                  extra=["-flags", "+ildct+ilme", "-vf", "setfield=tff"])  # interlaced, top field first (no -top: FFmpeg 9)
         site, client = self.site()
         result = self.run_item(self.dir / "abc00123.mkv", client)
         self.assertTrue(result.ok, result.message)
@@ -505,6 +505,10 @@ class FlowTest(unittest.TestCase):
     def test_contact_sheet_with_either_way_of_reading_the_filters(self):
         """Newer FFmpeg releases no longer know -filter_script; FFmpeg before 7 doesn't know -/filter."""
         video = make_clip(self.dir / "abc00123.mkv", seconds=60, size="640x480")
+        # The installed FFmpeg knows at least one of the two; the stand-in below plays an FFmpeg that knows only one.
+        contact_sheet._FILTER_OPTION.clear()
+        contact_sheet.make(video, self.dir / "real.webp", TOOLS)
+        known = contact_sheet._FILTER_OPTION[str(TOOLS.ffmpeg)]
         real_run = subprocess.run
         for unknown in contact_sheet.FILTER_OPTIONS:
             with self.subTest(unknown=unknown):
@@ -513,10 +517,12 @@ class FlowTest(unittest.TestCase):
 
                 def run(cmd, *args, **kwargs):
                     if "canvas.rgb" in cmd:
-                        calls.append(next(c for c in cmd if c in contact_sheet.FILTER_OPTIONS))
-                        if unknown in cmd:  # as an FFmpeg answers an option it doesn't know
+                        option = next(c for c in cmd if c in contact_sheet.FILTER_OPTIONS)
+                        calls.append(option)
+                        if option == unknown:  # as an FFmpeg answers an option it doesn't know
                             return subprocess.CompletedProcess(cmd, 1, b"", f"Unrecognized option '{unknown[1:]}'.\r\n"
                                                                "Error splitting the argument list: Option not found\r\n".encode())
+                        cmd = [known if c == option else c for c in cmd]  # the installed FFmpeg reads the file its way
                     return real_run(cmd, *args, **kwargs)
 
                 with mock.patch.object(contact_sheet.subprocess, "run", side_effect=run):
