@@ -17,6 +17,10 @@
     ffmpeg: `FFmpeg (${link("https://www.gyan.dev/ffmpeg/builds/", "Windows builds")} · ${link("https://ffmpeg.org/download.html", "all systems")})`,
     mediainfo: link("https://mediaarea.net/en/MediaInfo/Download", "MediaInfo CLI"),
   };
+  // Each program is found (or missing) on its own; ffprobe comes with FFmpeg's download.
+  const TOOL_NAMES = { mediainfo: "MediaInfo", ffmpeg: "FFmpeg", ffprobe: "ffprobe" };
+  const TOOL_DOWNLOADS = { mediainfo: DOWNLOADS.mediainfo, ffmpeg: DOWNLOADS.ffmpeg, ffprobe: DOWNLOADS.ffmpeg };
+  const listed = words => (words.length < 2 ? words.join("") : `${words.slice(0, -1).join(", ")} and ${words[words.length - 1]}`);
 
   let state = null;
   let lastLine = 0;
@@ -267,8 +271,10 @@
       const other = job.state === "bad" && job.files.length && job.cid_problem
         ? `<label class="field" for="cid-${job.id}"><span>Wrong CID? Check with this one</span><input type="text" class="mono" id="cid-${job.id}" value="${esc(draft(`cid-${job.id}`, job.cid || ""))}" placeholder="abc00123" aria-label="${esc(`Another CID for ${job.name}`)}"></label>
            <button type="button" class="btn small" data-act="content_id" data-id="${job.id}">Use this id</button>` : "";
+      // No "Check again" where it can't change anything: what the files are decides (an ISO, a part on its own ...).
+      const again = job.final ? "" : `<button type="button" class="btn small" data-act="retry" data-id="${job.id}">Check again</button>`;
       html += `<div class="box bad"><span>${linked(job.message)}</span><div class="actions">${other}
-        <button type="button" class="btn small" data-act="retry" data-id="${job.id}">Check again</button>
+        ${again}
         <button type="button" class="btn small" data-act="remove" data-id="${job.id}">Remove from the list</button></div></div>`;
     }
     html += existingInfo(job);
@@ -277,7 +283,10 @@
       html += `<ul class="steps">${job.steps.map((s, i) => `<li class="${now && i === job.steps.length - 1 ? "now" : ""}">${esc(s)}</li>`).join("")}</ul>`;
     }
     if (job.state === "done") {
-      html += `<div class="box ok"><span>${esc(job.message.replace(/\.$/, ""))}${job.page ? `: <a href="${esc(job.page)}" target="_blank" rel="noopener noreferrer">${esc(job.page)}</a>` : ""}</span>
+      const page = job.page ? `<a href="${esc(job.page)}" target="_blank" rel="noopener noreferrer">${esc(job.page)}</a>` : "";
+      // The site answers "Torrent uploaded successfully." also when the upload waits for staff: the tool says that instead.
+      const said = job.waits_for_staff ? `${esc(job.message)}${page ? ` (${page})` : ""}` : `${esc(job.message.replace(/\.$/, ""))}${page ? `: ${page}` : ""}`;
+      html += `<div class="box ok"><span>${said}</span>
         ${job.seed ? `<span>Torrent to seed: <span class="mono">${esc(job.seed)}</span></span>` : ""}</div>`;
     }
     if (job.state === "test") {
@@ -337,7 +346,8 @@
     const shown = open.has(job.id);
     // The reason of a refused video (or the question) is in its box when open: the row says it in one line while closed.
     const answer = ["bad", "failed", "ask"].includes(job.state);
-    const note = !shown && answer ? (job.state === "ask" ? askNote(job) : job.message) : !job.cid && !(shown && answer) ? job.message || job.name : "";
+    const waits = !shown && job.state === "done" && job.waits_for_staff; // "Uploaded: waits for staff approval"
+    const note = !shown && answer ? (job.state === "ask" ? askNote(job) : job.message) : waits ? job.message : !job.cid && !(shown && answer) ? job.message || job.name : "";
     return `<div class="itemrow" data-open="${job.id}" role="button" tabindex="0" aria-expanded="${shown}" aria-controls="detail-${job.id}"
         aria-label="${esc(`${title}: ${label}. ${shown ? "Hide" : "Show"} the details`)}">
         ${coversOn ? coverOf(job) : ""}
@@ -443,12 +453,13 @@
     $("#seedStatus").className = "stat";
     const t = state.tools;
     const missing = Object.keys(t.errors || {});
-    $("#toolStatus").textContent = s.starting ? "" : missing.length ? `Missing: ${missing.map(m => m === "ffmpeg" ? "FFmpeg" : "MediaInfo").join(", ")}` : "MediaInfo, FFmpeg";
+    $("#toolStatus").textContent = s.starting ? "" : missing.length ? `Missing: ${missing.map(m => TOOL_NAMES[m]).join(", ")}` : "MediaInfo, FFmpeg";
     $("#toolStatus").className = missing.length ? "stat bad" : "stat";
 
     const notes = [];
     if (!s.starting && missing.length) {
-      notes.push(`${missing.map(m => m === "ffmpeg" ? "FFmpeg" : "MediaInfo").join(" and ")} not found. Download ${missing.map(m => DOWNLOADS[m]).join(" and ")}, then see Settings → Programs.`);
+      const downloads = [...new Set(missing.map(m => TOOL_DOWNLOADS[m]))];
+      notes.push(`${listed(missing.map(m => TOOL_NAMES[m]))} not found. Download ${downloads.join(" and ")}, then see Settings → Programs.`);
     }
     if (!s.starting && !state.user) {
       notes.push(!s.has_key ? "Save your ClearJAV API key in Settings to upload. Test runs work without it."
@@ -487,7 +498,7 @@
     $("#qbPass").placeholder = s.has_qb_password ? "saved (type to replace)" : "empty if none";
     const t = state.tools;
     const row = (name, path, error) => `<span>${name}</span><span class="path">${esc(path || error || "")}</span>${path ? `<span class="ok-t">found</span>` : `<span class="bad-t">missing</span>`}`;
-    $("#toolList").innerHTML = s.starting ? "<span>Looking…</span>" : row("MediaInfo", t.mediainfo, t.errors.mediainfo) + row("FFmpeg", t.ffmpeg, t.errors.ffmpeg) + row("ffprobe", t.ffprobe, t.errors.ffmpeg);
+    $("#toolList").innerHTML = s.starting ? "<span>Looking…</span>" : row("MediaInfo", t.mediainfo, t.errors.mediainfo) + row("FFmpeg", t.ffmpeg, t.errors.ffmpeg) + row("ffprobe", t.ffprobe, t.errors.ffprobe);
     setHtml($("#toolHelp"), `Not installed? Download ${DOWNLOADS.ffmpeg} and ${DOWNLOADS.mediainfo}. The uploader doesn't include them. `
       + `Put ffmpeg, ffprobe and MediaInfo next to the uploader or on PATH, or give their places under "Use other copies", then "Check setup again".`);
     $("#filesNote").innerHTML = `Settings file: <span class="mono">${esc(s.config_path)}</span><br>Log (without keys or passkeys): <span class="mono">${esc(s.log_dir)}</span>`;

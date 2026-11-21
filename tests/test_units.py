@@ -250,6 +250,14 @@ class PlanTest(unittest.TestCase):
         self.assertIn("can't upload", pipeline.permission_problem({"allowed": False}, pipeline.Options()))
         self.assertIsNone(pipeline.permission_problem(None, pipeline.Options(internal=True)))
 
+    def test_which_uploads_wait_for_staff(self):
+        # From /api/user's "upload" answer and "Send to the moderation queue anyway".
+        self.assertFalse(pipeline.waits_for_staff({"allowed": True, "skips_moderation": True}, False))
+        self.assertTrue(pipeline.waits_for_staff({"allowed": True, "skips_moderation": True}, True))
+        self.assertTrue(pipeline.waits_for_staff({"allowed": True, "skips_moderation": False}, False))
+        for flags in (None, {}, {"allowed": True}):  # the site doesn't say: its own message stays
+            self.assertFalse(pipeline.waits_for_staff(flags, True), flags)
+
 
 class NamesAndFoldersTest(unittest.TestCase):
     def test_part_names_and_content_ids_from_names(self):
@@ -624,6 +632,102 @@ class PartsTest(unittest.TestCase):
         self.assertEqual(problems, {"brg00011.mp4": "", "kil00032-pt1.mp4": pipeline.PART_PROBLEM, "kil00032-pt2.mp4": pipeline.PART_PROBLEM})
 
 
+class FinalRefusalTest(unittest.TestCase):
+    """Refusals that checking the same files again can't change (the page offers no "Check again" for them), and the
+    folder read again for the ones the member can fix."""
+
+    def setUp(self):
+        self.dir = Path(tempfile.mkdtemp(prefix="aio final "))
+        self.addCleanup(shutil.rmtree, self.dir, True)
+
+    def refusal(self, item, infos=None):
+        """(message, final) of prepare's refusal; `infos` stand for MediaInfo's reading."""
+        with self.assertRaises(pipeline.Skip) as caught:
+            pipeline.prepare(item, None, Path("mediainfo"), pipeline.Ui(), infos=infos)
+        return str(caught.exception), caught.exception.final
+
+    def parts(self, name, numbers):
+        folder = self.dir / name
+        folder.mkdir()
+        for n in numbers:
+            (folder / f"{name}-pt{n}.mkv").write_bytes(b"x")
+        items = pipeline.collect([folder])
+        self.assertEqual([i.target for i in items], [folder])
+        return items[0]
+
+    def test_what_the_files_are_is_final(self):
+        # Their names decide: an ISO, another kind of video, a part on its own (alone, or found in a folder).
+        loose = self.dir / "loose"
+        loose.mkdir()
+        for name in ("ABP-123.iso", "kil00032-pt1.mp4"):
+            (loose / name).write_bytes(b"x")
+        singles = ("ABP-124.iso", "mkon00148.avi", "abc00123-pt2.mkv")
+        for name in singles:
+            (self.dir / name).write_bytes(b"x")
+        items = pipeline.collect([loose]) + [pipeline.collect([self.dir / name])[0] for name in singles]
+        self.assertEqual(len(items), 5)
+        for item in items:
+            self.assertTrue(item.problem and item.final, item.target.name)
+            self.assertEqual(self.refusal(item), (item.problem, True))
+        # What MediaInfo reads: codecs the site doesn't take, a rip's name, a re-encoded "Remux".
+        video = self.dir / "abc00124.mkv"
+        video.write_bytes(b"x")
+        one = pipeline.collect([video])[0]
+        self.assertEqual((one.problem, one.final), ("", False))
+        for info in (media(1920, 1080, vcodec="MPEG-4 Visual"), media(1920, 1080, acodec="MP3"),
+                     media(1920, 1080, name="abc00124 webrip.mkv"), media(720, 480, "MPEG-2", "AC-3", encoder="x264 core 164")):
+            message, final = self.refusal(one, [info])
+            self.assertTrue(final, message)
+        # DMM's own part number in a single file, a Remux or H.264 video in parts: another upload is the way out.
+        tagged = Media(video, "", 1920, 1080, 60.0, "H.264", "AAC", "abc00124", 1)
+        self.assertTrue(self.refusal(one, [tagged])[1])
+        item = self.parts("abc00125", (1, 2))
+        remux = [Media(p, "", 720, 480, 60.0, "MPEG-2", "AC-3", None, None) for p in item.files]
+        self.assertEqual(self.refusal(item, remux), ("a Remux in several files: upload Remuxes one file at a time", True))
+        h264 = [Media(p, "", 1920, 1080, 60.0, "H.264", "AAC", None, None) for p in item.files]
+        message, final = self.refusal(item, h264)
+        self.assertTrue(final and message.startswith("several H.264 parts"), message)
+
+    def test_what_the_member_can_fix_is_not_final(self):
+        # A missing part, an odd part, parts of different videos, another file in the folder, a place that isn't there.
+        item = self.parts("abc00123", (1, 3))
+        vp9 = [Media(p, "", 3840, 2160, 60.0, "VP9", "AAC", None, None) for p in item.files]
+        self.assertEqual(self.refusal(item, vp9), ("part 2 is missing (the folder has parts 1 and 3)", False))
+        pair = self.parts("abc00126", (1, 2))
+        odd = [Media(pair.files[0], "", 3840, 2160, 60.0, "VP9", "AAC", None, None),
+               Media(pair.files[1], "", 1920, 1080, 60.0, "VP9", "AAC", None, None)]
+        self.assertEqual(self.refusal(pair, odd), ("the parts don't match: part 2 is 1920×1080, part 1 is 3840×2160", False))
+        others = [Media(p, "", 3840, 2160, 60.0, "VP9", "AAC", cid, None) for p, cid in zip(pair.files, ("abc00126", "xyz00001"))]
+        self.assertEqual(self.refusal(pair, others), ("the files belong to different videos (abc00126, xyz00001)", False))
+        (item.target / "notes.doc").write_bytes(b"x")
+        crowded = pipeline.collect([item.target])[0]
+        self.assertIn("also holds notes.doc", crowded.problem)
+        self.assertEqual(self.refusal(crowded), (crowded.problem, False))
+        gone = pipeline.collect([self.dir / "missing.mkv"])[0]
+        self.assertEqual(self.refusal(gone), ("not found", False))
+
+    def test_check_again_reads_the_folder_again(self):
+        item = self.parts("abc00123", (1, 2))
+        (item.target / "notes.doc").write_bytes(b"x")
+        crowded = pipeline.collect([item.target])[0]
+        self.assertIn("also holds notes.doc", crowded.problem)
+        (item.target / "notes.doc").unlink()
+        fixed = pipeline.reread(crowded)
+        self.assertEqual((fixed.target, fixed.files, fixed.problem), (item.target, item.files, ""))
+        (item.target / "abc00123-pt3.mkv").write_bytes(b"x")  # a part added: the files are read again too
+        self.assertEqual([p.name for p in pipeline.reread(fixed).files], ["abc00123-pt1.mkv", "abc00123-pt2.mkv", "abc00123-pt3.mkv"])
+        # The place no longer holds this one upload (the parts were joined): the old one stays, with its reason.
+        for path in list(item.target.iterdir()):
+            path.unlink()
+        (item.target / "abc00123.mkv").write_bytes(b"x")
+        self.assertIs(pipeline.reread(crowded), crowded)
+        later = pipeline.collect([self.dir / "later.mkv"])[0]  # not there yet, then there
+        self.assertEqual(later.problem, "not found")
+        (self.dir / "later.mkv").write_bytes(b"x")
+        again = pipeline.reread(later)
+        self.assertEqual((again.problem, again.files), ("", [later.target]))
+
+
 SITE_TORRENT = bencode({"announce": "https://clearjav.example/announce/PASSKEY",
                         "info": {"name": "x", "length": 1, "piece length": 16384, "pieces": b"0" * 20, "private": 1}})
 
@@ -809,6 +913,22 @@ class ExecuteTest(unittest.TestCase):
         result = pipeline.execute(plan, None, None, pipeline.Options(dry_run=True), Steps())
         self.assertEqual(result.title, "ABC-123 2160p DMM WEB-DL VP9 AAC")
         self.assertIn("r18.dev and DMM have no release date for abc00123: the title goes without one", result.warnings)
+
+    def test_an_upload_that_waits_for_staff_says_so(self):
+        # The site answers "Torrent uploaded successfully." also when the upload goes to the moderation queue.
+        video = self.dir / "abc00123.mkv"
+        for waits, message in ((False, "Torrent uploaded successfully."), (True, "Uploaded: waits for staff approval")):
+            with self.subTest(waits=waits):
+                video.write_bytes(b"x")
+                plan = self.plan(pipeline.collect([video])[0])
+                result = pipeline.execute(plan, StandInSite(), None, pipeline.Options(waits_for_staff=waits), Steps())
+                self.assertEqual((result.ok, result.message, result.waits_for_staff, result.page),
+                                 (True, message, waits, "https://clearjav.example/torrents/77"))
+                shutil.rmtree(self.dir / "clearjav-uploads")
+        # A test run uploads nothing, so nothing waits.
+        result = pipeline.execute(plan, None, None, pipeline.Options(dry_run=True, waits_for_staff=True), Steps())
+        self.assertEqual((result.ok, result.waits_for_staff), (True, False))
+        self.assertTrue(result.message.startswith("ready (not uploaded)"), result.message)
 
     def test_only_what_is_still_there_is_put_back(self):
         video = self.dir / "My video.mkv"

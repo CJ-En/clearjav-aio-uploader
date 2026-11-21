@@ -66,7 +66,8 @@
             <label class="check" for="optAllowDuplicates"><input type="checkbox" data-opt="allow_duplicates" id="optAllowDuplicates" aria-label="Upload even if ClearJAV already has the video" aria-describedby="optAllowDuplicatesHint"><span>Upload even if ClearJAV already has the video <small id="optAllowDuplicatesHint">otherwise each one asks you</small></span></label>
             <label class="check" for="optDryRun"><input type="checkbox" data-opt="dry_run" id="optDryRun" aria-label="Test run" aria-describedby="optDryRunHint"><span>Test run <small id="optDryRunHint">makes the title, contact sheet and torrent; uploads nothing</small></span></label>
             <div class="field"><span id="outputDirLabel">Save .torrent files, contact sheets and MediaInfo in</span>
-              <div class="inline"><input type="text" class="mono" data-opt="output_dir" id="optOutputDir" aria-label="Save .torrent files, contact sheets and MediaInfo in" placeholder="next to each video (clearjav-uploads)"><button type="button" class="btn small" data-pick="output_dir" aria-label="Choose the folder for .torrent files, contact sheets and MediaInfo">Choose…</button></div>
+              <div class="inline"><input type="text" class="mono" data-opt="output_dir" id="optOutputDir" aria-label="Save .torrent files, contact sheets and MediaInfo in" aria-describedby="optOutputDirHint" placeholder="next to each video"><button type="button" class="btn small" data-pick="output_dir" aria-label="Choose the folder for .torrent files, contact sheets and MediaInfo">Choose…</button></div>
+              <small class="note faint" id="optOutputDirHint">empty: in a clearjav-uploads folder next to each video</small>
             </div>
           </div>
         </div>
@@ -132,7 +133,7 @@
           <button type="button" class="btn" id="announceForget">Forget</button>
         </div>
         <div class="note" id="announceState"></div>
-        <div class="hint">Paste the announce URL once: it goes into every .torrent the tool makes, so the file is a normal private ClearJAV torrent from the start. The site still makes its own .torrent on upload, and the tool seeds that one. The key and the announce URL hold your passkey: they are kept in <span class="storeName">the place shown above</span>, and never written to the log.</div>
+        <div class="hint">Paste the announce URL once: it goes into every .torrent the tool makes, so the file is a normal private ClearJAV torrent from the start. The site still makes its own .torrent on upload: that is the one to seed, and the tool saves it, puts it in your watch folder or hands it to qBittorrent (Seeding). The key and the announce URL hold your passkey: they are kept in <span class="storeName">the place shown above</span>, and never written to the log.</div>
       </div>
     </div>
 

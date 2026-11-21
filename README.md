@@ -24,6 +24,21 @@ It runs as a page in your browser (only your computer can use it), or in the ter
   ClearJAV recognises a copy of a torrent that is already there.
 - **The right resolution** (1080p, 2160p, VR, 8K-VR, ...) and type (WEB-DL or Remux) are chosen for you.
 
+## Changes in 1.0.1
+
+- Contact sheets work with FFmpeg 9.1.
+- An upload that waits in the moderation queue says so: "Uploaded: waits for staff approval", on the page and in
+  the terminal (the site answers "Torrent uploaded successfully" either way).
+- Settings → Programs shows FFmpeg and ffprobe each with its own state: a missing ffprobe no longer shows FFmpeg as
+  missing too, and the other way round.
+- A video the tool can never upload (an ISO, a part on its own, a rip, video or audio the site doesn't take) no
+  longer offers "Check again". For a video refused before it could be checked (its folder held something else, a
+  part was missing), "Check again" now reads its folder again.
+- Settings: the account panel says what happens to the site's .torrent (the tool saves it, puts it in your watch
+  folder or hands it to qBittorrent; it doesn't seed it itself).
+- The box for the output folder shows its whole placeholder.
+- Windows: with Smart App Control on, Windows blocks the program completely; use `run.bat` (below).
+
 ## What you need
 
 Install these yourself. **They are not included**, also not in the Windows download. Always take the
@@ -63,6 +78,8 @@ installing. In the terminal: `run.bat doctor` (Linux: `sh run.sh doctor`).
    the uploader).
 
 Windows may say the program is from an unknown publisher (it isn't signed): "More info" → "Run anyway".
+With Windows' **Smart App Control** on, the unsigned program is blocked completely (there is no "Run
+anyway"): then use the source version, `run.bat` (below).
 
 ## From the source (Windows, Linux, macOS)
 
@@ -79,7 +96,8 @@ On the page: **Settings**
 1. **API key**: paste it, "Save and check".
 2. **Announce URL** (optional): from the Upload page ("Announce URL"). It goes into every .torrent
    the tool makes, so the file is a normal private ClearJAV torrent from the start. The site still
-   makes its own .torrent on upload; that one is seeded.
+   makes its own .torrent on upload: that is the one to seed, and the tool saves it, puts it in your
+   watch folder or hands it to qBittorrent (Seeding, below).
 3. **Seeding**: after the upload the tool downloads the site's .torrent and
    - only saves it (you add it to your client), or
    - copies it into a **watch folder** (the client must save it into the folder of your videos,

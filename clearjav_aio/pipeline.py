@@ -40,7 +40,12 @@ ERRORS = (media.MediaError, contact_sheet.SheetError, r18.R18Error, ApiError, OS
 
 
 class Skip(Exception):
-    """This video is not uploaded (the reason is the message)."""
+    """This video is not uploaded (the reason is the message). `final`: what the files are decides it (an ISO, a part
+    on its own, codecs the site doesn't take ...), so checking the same files again can't change it."""
+
+    def __init__(self, message: str = "", final: bool = False) -> None:
+        super().__init__(message)
+        self.final = final
 
 
 class WrongId(Skip):
@@ -95,6 +100,7 @@ class Item:
     target: Path
     files: list[Path]
     problem: str = ""
+    final: bool = False  # the problem can't change while the video keeps its place and names (Skip.final)
 
 
 @dataclass
@@ -114,6 +120,7 @@ class Options:
     watch_dir: Path | None = None
     qbittorrent: tuple[str, str, str, str] | None = None  # url, user, password, category
     clean_up: bool = False  # after a successful upload, delete the sheets and MediaInfo (and the .torrent qBittorrent took)
+    waits_for_staff: bool = False  # the upload goes to the moderation queue (waits_for_staff())
     # Staff and internal groups only (the site ignores them for everyone else):
     freeleech: int = 0  # percent
     freeleech_days: int | None = None
@@ -151,6 +158,7 @@ class Result:
     page: str | None = None
     seed_torrent: Path | None = None
     warnings: list[str] = field(default_factory=list)
+    waits_for_staff: bool = False  # uploaded, and waits in the moderation queue until staff approve it
 
 
 class Ui:
@@ -473,7 +481,7 @@ def collect(paths: list[Path], recursive: bool = False, skipped: list[Path] | No
             skipped.extend(p for p in entries if p.suffix.lower() in media.OTHER_VIDEO_EXTENSIONS
                            and not p.name.startswith(".") and p.is_file())
         for iso in (p for p in entries if p.suffix.lower() == ".iso" and p.is_file()):
-            items.append(Item(iso, [iso], file_problem(iso)))  # shown with the reason, not left out silently
+            items.append(Item(iso, [iso], file_problem(iso), final=True))  # shown with the reason, not left out silently
         ids = {content_id_from_name(f)[0] for f in files}
         parts = [f for f in files if content_id_from_name(f)[1]]
         part_ids = list(dict.fromkeys(content_id_from_name(f)[0] for f in parts))
@@ -483,8 +491,9 @@ def collect(paths: list[Path], recursive: bool = False, skipped: list[Path] | No
             others = [p.name for p in entries if p not in files and not p.name.startswith(".") and p.name != "clearjav-uploads"
                       and not (p.is_file() and p.suffix.lower() in PART_FOLDER_EXTRAS)]
             if folder.parent == folder:
-                items.append(Item(folder, files, "the parts are at the top of a drive: put them in a folder of their own"))
-            elif others:
+                items.append(Item(folder, files, "the parts are at the top of a drive: put them in a folder of their own",
+                                  final=True))
+            elif others:  # not final: once the other things are out, "Check again" reads the folder again
                 items.append(Item(folder, files, f"the folder of the parts also holds {', '.join(others[:3])}"
                                   f"{' ...' if len(others) > 3 else ''}: put the parts (and nothing else) in a folder of their own"))
             else:
@@ -493,7 +502,8 @@ def collect(paths: list[Path], recursive: bool = False, skipped: list[Path] | No
             # Parts of several videos together (kil00032-pt1 next to brg00011-pt2): said plainly on each part.
             part_problem = mixed_parts_problem(part_ids) if len(part_ids) > 1 else PART_PROBLEM
             for f in files:
-                items.append(Item(f, [f], part_problem if content_id_from_name(f)[1] else ""))
+                part = bool(content_id_from_name(f)[1])
+                items.append(Item(f, [f], part_problem if part else "", final=part))
         if recursive:
             for sub in entries:
                 if sub.is_dir() and not _skipped_folder(sub):
@@ -504,13 +514,22 @@ def collect(paths: list[Path], recursive: bool = False, skipped: list[Path] | No
         # a real folder to seed from. Only made absolute, not resolved: a mapped network drive keeps its letter.
         path = Path(os.path.abspath(path.expanduser()))
         if path.is_file():
+            # The file's name decides these (an ISO, another kind of video, a part on its own): final.
             problem = file_problem(path) or (PART_PROBLEM if content_id_from_name(path)[1] else "")
-            items.append(Item(path, [path], problem))
+            items.append(Item(path, [path], problem, final=bool(problem)))
         elif path.is_dir():
             from_folder(path)
         else:
             items.append(Item(path, [], "not found"))
     return items
+
+
+def reread(item: Item) -> Item:
+    """The upload read again from its place, as "Check again" does for a video refused before it could be checked:
+    the member may have fixed it (taken another file out of the folder of the parts, added a missing part, connected
+    the drive). The old one when that place no longer holds one upload."""
+    again = [i for i in collect([item.target]) if i.target == item.target]
+    return again[0] if len(again) == 1 else item
 
 
 def rename_plan(item: Item, infos: list[media.Media], base: str) -> list[tuple[Path, Path]]:
@@ -626,13 +645,25 @@ def permission_problem(flags: dict | None, opts: Options) -> str | None:
     return None
 
 
+# Said instead of the site's "Torrent uploaded successfully.", which it also answers when the upload waits for staff.
+WAITS_FOR_STAFF = "Uploaded: waits for staff approval"
+
+
+def waits_for_staff(flags: dict | None, mod_queue: bool) -> bool:
+    """Whether an upload goes to the moderation queue and waits for staff to approve it: the account's uploads don't
+    skip it (/api/user's "upload" answer), or the member sends it there anyway. False when the site doesn't say."""
+    if not flags or "skips_moderation" not in flags:
+        return False
+    return not flags["skips_moderation"] or mod_queue
+
+
 # -- 1. prepare: read, look up, check (changes nothing) -----------------------------------------
 
 
 def prepare(item: Item, client: Client | None, mediainfo_path: Path, ui: Ui, cid: str | None = None,
             infos: list[media.Media] | None = None) -> Plan:
     if item.problem:
-        raise Skip(item.problem)
+        raise Skip(item.problem, final=item.final)
     warnings: list[str] = []
 
     if infos is None:
@@ -643,8 +674,8 @@ def prepare(item: Item, client: Client | None, mediainfo_path: Path, ui: Ui, cid
     kinds = []
     for info in infos:
         kind, problem = media.kind_of(info, folder_name)
-        if problem:
-            raise Skip(problem)
+        if problem:  # what the file is (an ISO, a rip, its codecs): final
+            raise Skip(problem, final=True)
         kinds.append(kind)
     kind = kinds[0]  # the parts are all of one kind (checked below, with the content id known)
 
@@ -666,20 +697,23 @@ def prepare(item: Item, client: Client | None, mediainfo_path: Path, ui: Ui, cid
     if not media.CID_RE.fullmatch(cid):
         raise NeedsContentId(f"{cid!r} is not a content id (small letters, digits and _ only, e.g. abc00123)", None, infos)
 
+    # A part on its own, a Remux or H.264 video in parts: final (the way out is another upload: the folder of all the
+    # parts, each file on its own, the joined file). A missing or odd part is not: the folder can be fixed.
     if len(item.files) == 1 and not first.part and content_id_from_name(first.path)[1]:
-        raise Skip(PART_PROBLEM)
+        raise Skip(PART_PROBLEM, final=True)
     if len(item.files) == 1 and first.part:
         raise Skip(f"DMM marked this file as part {first.part} of a video in several parts: put all its parts in a "
-                   "folder (named abc00123-pt1.mkv, -pt2, ...) and upload the folder, or join H.264 parts first")
+                   "folder (named abc00123-pt1.mkv, -pt2, ...) and upload the folder, or join H.264 parts first", final=True)
     if len(item.files) > 1:
         # One video cut in pieces: parts 1, 2, 3 ..., alike (a 1080p file next to 4K parts is another video).
         problem = numbering_problem(infos) or parts_mismatch(infos, kinds)
         if problem:
             raise Skip(problem)
         if kind == media.REMUX:
-            raise Skip("a Remux in several files: upload Remuxes one file at a time")
+            raise Skip("a Remux in several files: upload Remuxes one file at a time", final=True)
         if any(i.video_codec != "VP9" for i in infos):
-            raise Skip("several H.264 parts: join them into one file first (VideoMerger), only 4K VP9 parts are uploaded as parts")
+            raise Skip("several H.264 parts: join them into one file first (VideoMerger), only 4K VP9 parts are uploaded as parts",
+                       final=True)
 
     source = media.remux_source(first, folder_name) if kind == media.REMUX else "DMM"
     plan = Plan(item, infos, cid, kind, source, warnings=warnings)
@@ -896,6 +930,8 @@ def execute(plan: Plan, client: Client | None, tool_paths: tools.Tools, opts: Op
         clean_up(made, out if opts.output_dir is None else None, ui)
         if given_to_qbittorrent:
             seed = None
+    if opts.waits_for_staff:
+        return Result(item.target, True, WAITS_FOR_STAFF, title, page, seed, warnings, waits_for_staff=True)
     return Result(item.target, True, message or "uploaded", title, page, seed, warnings)
 
 

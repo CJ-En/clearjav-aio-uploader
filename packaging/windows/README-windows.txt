@@ -41,3 +41,7 @@ Terminal use: ClearJAV-Uploader.exe --help (e.g. ClearJAV-Uploader.exe upload D:
 
 Windows may warn that the program is from an unknown publisher (it isn't signed):
 "More info" -> "Run anyway".
+
+With Windows' Smart App Control on, the unsigned program is blocked completely (there is
+no "Run anyway"). Then use the source version instead: run.bat, from the uploader's
+source download (it needs Python 3.10 or newer; see its README.md).

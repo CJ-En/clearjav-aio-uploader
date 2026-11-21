@@ -1,4 +1,5 @@
 import io
+import logging
 import re
 import shutil
 import socket
@@ -544,6 +545,11 @@ class CliTest(unittest.TestCase):
             self.addCleanup(patcher.stop)
 
     def tearDown(self):
+        # cli.main opened the log file in this folder: closed first, or Windows can't delete the folder.
+        root = logging.getLogger()
+        for handler in [h for h in root.handlers if getattr(h, "clearjav_aio", False)]:
+            root.removeHandler(handler)
+            handler.close()
         shutil.rmtree(self.dir, ignore_errors=True)
 
     def run_cli(self, *args):
@@ -559,6 +565,27 @@ class CliTest(unittest.TestCase):
             code, output = self.run_cli(str(self.dir))
         self.assertEqual(code, 2)
         self.assertIn("No API key yet", output)
+
+    @unittest.skipUnless(TOOLS and MEDIAINFO, "ffmpeg/mediainfo not installed")
+    def test_an_upload_that_waits_for_staff_says_so(self):
+        # The site answers "Torrent uploaded successfully." also when the upload goes to the moderation queue.
+        video = make_clip(self.dir / "abc00123.mkv", seconds=4)
+        site = FakeSite(flags={"allowed": True, "skips_moderation": False, "internal_options": False, "featured": False})
+        self.addCleanup(site.close)
+        secrets = {config.API_KEY: "good-key"}
+        for patcher in (mock.patch.object(r18, "lookup", side_effect=lambda cid, *a, **k: KNOWN.get(cid)),
+                        mock.patch.object(dmm_api, "lookup", side_effect=lambda cid: DMM.get(cid)),
+                        mock.patch.object(api.time, "sleep"),
+                        mock.patch.object(config, "get_secret", side_effect=lambda name, env=None: secrets.get(name, "")),
+                        mock.patch.object(config, "load", return_value=config.Settings(site=site.url))):
+            patcher.start()
+            self.addCleanup(patcher.stop)
+        code, output = self.run_cli(str(video))
+        self.assertEqual(code, 0, output)
+        self.assertIn("Uploading as member (User), uploads wait for moderation", output)
+        self.assertIn(f"    {site.url}/torrents/77  (Uploaded: waits for staff approval)\n", output)
+        self.assertNotIn("uploaded successfully", output)
+        self.assertEqual(len(site.uploads), 1)
 
     def test_other_videos_in_a_folder_are_named(self):
         folder = self.dir / "videos"

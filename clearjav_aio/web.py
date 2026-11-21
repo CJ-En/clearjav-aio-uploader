@@ -71,6 +71,8 @@ class Job:
     suggestion: pipeline.Suggestion | None = None  # a content id found for the DVD id in the name (to confirm)
     infos: list[media.Media] | None = None  # MediaInfo's reading while the content id is asked
     cid_problem: bool = False  # refused because of the content id: the page offers to try another
+    final: bool = False  # refused for what the files are (pipeline.Skip.final): the page offers no "Check again"
+    reread: bool = False  # "Check again" of a video refused before it was checked: read it again from its folder
     message: str = ""
     steps: list[str] = field(default_factory=list)
     progress: float | None = None
@@ -113,7 +115,8 @@ class App:
         self.user: dict | None = None
         self.user_error = ""
         self.mediainfo: Path | None = None
-        self.ffmpeg: tools.Tools | None = None
+        self.ffmpeg: tools.Tools | None = None  # ffmpeg and ffprobe, once both are found
+        self.tool_paths: dict[str, Path] = {}  # each program found: mediainfo, ffmpeg, ffprobe
         self.tool_errors: dict[str, str] = {}
         self.checks: queue.Queue[int] = queue.Queue()
         self.quit = threading.Event()
@@ -155,16 +158,18 @@ class App:
     # -- setup -----------------------------------------------------------------------------
 
     def find_tools(self) -> None:
-        errors = {}
-        try:
-            self.mediainfo = tools.find_tool("mediainfo", self.settings.mediainfo or None)
-        except tools.ToolError as exc:  # the page shows the download links itself
-            self.mediainfo, errors["mediainfo"] = None, exc.short
-        try:
-            self.ffmpeg = tools.find_tools(self.settings.ffmpeg or None, self.settings.ffprobe or None)
-        except tools.ToolError as exc:
-            self.ffmpeg, errors["ffmpeg"] = None, exc.short
-        self.tool_errors = errors
+        """Each program on its own: Settings > Programs shows each one's state (ffprobe may be missing while ffmpeg
+        is there, or the other way round)."""
+        s = self.settings
+        found, errors = {}, {}
+        for name, override in (("mediainfo", s.mediainfo), ("ffmpeg", s.ffmpeg), ("ffprobe", s.ffprobe)):
+            try:
+                found[name] = tools.find_tool(name, override or None)
+            except tools.ToolError as exc:  # the page shows the download links itself
+                errors[name] = exc.short
+        self.mediainfo = found.get("mediainfo")
+        self.ffmpeg = tools.Tools(found["ffmpeg"], found["ffprobe"]) if "ffmpeg" in found and "ffprobe" in found else None
+        self.tool_paths, self.tool_errors = found, errors
 
     def sign_in(self, key: str | None = None) -> None:
         """Check the saved (or given) API key with the site."""
@@ -200,6 +205,7 @@ class App:
             internal=s.internal, rename=s.rename if s.rename in pipeline.RENAME_MODES else "content_id",
             announce=self.secret(config.ANNOUNCE_URL), seed=s.seeding,
             watch_dir=Path(s.watch_dir).expanduser() if s.watch_dir else None, qbittorrent=qb, clean_up=s.clean_up,
+            waits_for_staff=pipeline.waits_for_staff(self.flags(), s.mod_queue),
             dry_run=run["dry_run"], allow_duplicates=run["allow_duplicates"], freeleech=int(run["freeleech"] or 0),
             freeleech_days=run["freeleech_days"], double_upload=run["double_upload"],
             double_upload_days=run["double_upload_days"], sticky=run["sticky"], refundable=run["refundable"],
@@ -253,8 +259,11 @@ class App:
         ui = JobUi(self, job)
         infos = (job.plan.infos if job.plan else job.infos) if cid else None
         job.state, job.message, job.needs_cid, job.steps, job.result = "checking", "", False, [], None
-        job.suggestion, job.infos, job.cid_problem = None, None, False
-        if self.mediainfo is None:
+        job.suggestion, job.infos, job.cid_problem, job.final = None, None, False, False
+        if job.reread:
+            job.reread = False
+            job.item = pipeline.reread(job.item)
+        if self.mediainfo is None and not job.item.problem:  # an ISO is refused as one, MediaInfo or not
             job.state, job.message = "bad", "MediaInfo was not found: download it (links in Settings > Programs)."
             return
         try:
@@ -266,7 +275,7 @@ class App:
         except pipeline.WrongId as exc:
             job.state, job.message, job.cid_problem = "bad", str(exc), True
         except pipeline.Skip as exc:
-            job.state, job.message = "bad", str(exc)
+            job.state, job.message, job.final = "bad", str(exc), exc.final
         except pipeline.ERRORS as exc:
             log.warning("%s: %s", job.item.target, exc)
             job.state, job.message = "bad", str(exc)
@@ -294,6 +303,8 @@ class App:
                 self.note(f"{job.item.target.name}: skipped")
                 return
             if action == "retry":
+                # Refused before it could be checked: its folder is read again (in the checker, not under the lock).
+                job.reread = job.plan is None
                 if job.plan:
                     job.item = job.plan.item  # renamed already: check the new names
                 job.plan, job.state = None, "checking"
@@ -407,7 +418,8 @@ class App:
             job.result = pipeline.execute(plan, client, ffmpeg, opts, ui)
             job.state = "test" if opts.dry_run else "done"
             job.message = job.result.message
-            self.note(f"{plan.item.target.name}: " + (f"uploaded {job.result.page or ''}" if not opts.dry_run else "test run done"))
+            waits = " (waits for staff approval)" if job.result.waits_for_staff else ""
+            self.note(f"{plan.item.target.name}: " + (f"uploaded {job.result.page or ''}{waits}" if not opts.dry_run else "test run done"))
         except pipeline.Skip as exc:
             job.state, job.message = "failed", str(exc)
         except pipeline.ERRORS as exc:
@@ -444,6 +456,7 @@ class App:
             "id": job.id, "state": state, "target": str(job.item.target), "name": job.item.target.name,
             "files": [p.name for p in job.item.files], "size": size, "message": message, "questions": questions,
             "steps": job.steps[-12:], "progress": job.progress, "cid_problem": cid_problem,
+            "final": job.final and job.state == "bad",  # no "Check again": it can't change this refusal
         }
         if job.needs_cid:
             # The file's name may start with the content id ("kobp00007 DVD.mkv"): offered, never taken by itself.
@@ -470,7 +483,8 @@ class App:
                 renames=[[str(old.name), str(new.name)] for old, new in plan.renames(opts)],
             )
         if job.result:
-            view.update(page=job.result.page, seed=str(job.result.seed_torrent or ""), warnings=job.result.warnings)
+            view.update(page=job.result.page, seed=str(job.result.seed_torrent or ""), warnings=job.result.warnings,
+                        waits_for_staff=job.result.waits_for_staff)
         # A cover to show (the page loads it from /cover/<id>): covers on, r18.dev gave one, and the video isn't refused.
         view["cover"] = bool(self.settings.covers and plan and covers.allowed(plan.cover) and state != "bad")
         return view
@@ -509,9 +523,7 @@ class App:
                 "theme": s.theme, "covers": s.covers,
             },
             "tools": {
-                "mediainfo": str(self.mediainfo) if self.mediainfo else "",
-                "ffmpeg": str(self.ffmpeg.ffmpeg) if self.ffmpeg else "",
-                "ffprobe": str(self.ffmpeg.ffprobe) if self.ffmpeg else "",
+                **{name: str(self.tool_paths[name]) if name in self.tool_paths else "" for name in ("mediainfo", "ffmpeg", "ffprobe")},
                 "errors": self.tool_errors,
             },
             "last_folder": self.last_folder,
@@ -684,7 +696,8 @@ class App:
             raise Refused("Wait until the uploads are done.")
         self.find_tools()
         self.sign_in()
-        found = ", ".join(n for n, ok in (("MediaInfo", self.mediainfo), ("FFmpeg", self.ffmpeg)) if ok) or "nothing"
+        names = {"mediainfo": "MediaInfo", "ffmpeg": "FFmpeg", "ffprobe": "ffprobe"}
+        found = ", ".join(names[name] for name in self.tool_paths) or "nothing"
         self.note(f"setup checked: {found} found; " + (f"signed in as {self.user.get('username')}" if self.user else self.user_error))
 
 

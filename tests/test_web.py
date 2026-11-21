@@ -159,11 +159,13 @@ class WebTest(unittest.TestCase):
                          {"added": 3, "skipped": "1 file skipped: mkon00148.avi (only .mkv, .mp4 and .wmv are uploaded)"})
         state = self.wait_for(lambda s: all(j["state"] not in ("checking",) for j in s["jobs"]))
         jobs = {j["name"]: j for j in state["jobs"]}
-        self.assertEqual((jobs["ABP-123.iso"]["state"], jobs["ABP-123.iso"]["cid_problem"]), ("bad", False))  # no "Wrong CID?"
+        iso = jobs["ABP-123.iso"]
+        self.assertEqual((iso["state"], iso["cid_problem"], iso["final"]), ("bad", False, True))  # no "Wrong CID?", no "Check again"
         self.assertEqual((jobs["abc00123.mkv"]["state"], jobs["abc00123.mkv"]["title"]), ("ready", "ABC-123 2024-01-02 720p DMM WEB-DL H.264 AAC"))
         unknown = jobs["zzz00001.mkv"]
-        # Unknown on r18.dev and not on ClearJAV: refused (the site would need a title and a cover); another CID can be tried ...
-        self.assertEqual((unknown["state"], unknown["cid_problem"]), ("bad", True))
+        # Unknown on r18.dev and not on ClearJAV: refused (the site would need a title and a cover); another CID can be
+        # tried, and "Check again" asks r18.dev and ClearJAV again ...
+        self.assertEqual((unknown["state"], unknown["cid_problem"], unknown["final"]), ("bad", True, False))
         self.assertIn("ClearJAV has no torrent of it", unknown["message"])
         # ... and a test run says the same: it reports what a real upload would meet.
         self.post("/api/options", {"dry_run": True})
@@ -183,6 +185,8 @@ class WebTest(unittest.TestCase):
         self.assertEqual(len(self.site.uploads), 1)
         done = next(j for j in state["jobs"] if j["name"] == "abc00123.mkv")
         self.assertEqual(done["page"], f"{self.site.url}/torrents/77")
+        # This account's uploads skip the moderation queue: the site's own message.
+        self.assertEqual((done["message"], done["waits_for_staff"]), ("Torrent uploaded successfully.", False))
         self.assertTrue(Path(done["seed"]).is_file())
         self.post("/api/clear")
         self.assertEqual([j["state"] for j in self.state()["jobs"]], [])
@@ -215,6 +219,91 @@ class WebTest(unittest.TestCase):
         self.assertIn("exactly this title", job["message"])
         self.post("/api/options", {"personal_release": True, "tag": "Me"})
         self.assertEqual(self.state()["jobs"][0]["state"], "ready")
+
+    def test_refusals_that_cant_change_offer_no_check_again(self):
+        self.sign_in()
+        folder = self.dir / "videos"
+        folder.mkdir()
+        (folder / "ABP-123.iso").write_bytes(b"x")  # uploaded on the website, after staff approve it
+        (folder / "abc00123-pt1.mkv").write_bytes(b"x")  # a part on its own: its folder is another upload
+        parts = folder / "abc00124"
+        parts.mkdir()
+        for n in (1, 2):
+            (parts / f"abc00124-pt{n}.mkv").write_bytes(b"x")
+        (parts / "notes.doc").write_bytes(b"x")  # can be taken out of the folder
+        self.post("/api/add", {"paths": [str(folder)], "recursive": True})
+        state = self.wait_for(lambda s: len(s["jobs"]) == 3 and all(j["state"] != "checking" for j in s["jobs"]))
+        jobs = {j["name"]: j for j in state["jobs"]}
+        self.assertEqual({name: (j["state"], j["final"]) for name, j in jobs.items()},
+                         {"ABP-123.iso": ("bad", True), "abc00123-pt1.mkv": ("bad", True), "abc00124": ("bad", False)})
+        self.assertIn("also holds notes.doc", jobs["abc00124"]["message"])
+        # "Check again" reads the folder again: once the other file is out, its parts are checked.
+        (parts / "notes.doc").unlink()
+        self.post("/api/answer", {"id": jobs["abc00124"]["id"], "action": "retry"})
+        job = next(j for j in self.wait_for(lambda s: all(j["state"] != "checking" for j in s["jobs"]))["jobs"] if j["name"] == "abc00124")
+        self.assertNotIn("also holds", job["message"])
+        self.assertEqual(job["files"], ["abc00124-pt1.mkv", "abc00124-pt2.mkv"])
+        # The page draws the button only where checking again can change something.
+        self.assertIn('const again = job.final ? "" : `<button type="button" class="btn small" data-act="retry"',
+                      (web.web_dir() / "app.js").read_text(encoding="utf-8"))
+
+    def test_ffmpeg_and_ffprobe_are_shown_each_on_its_own(self):
+        # With one of them missing, the other one's row still says "found" with its place.
+        self.sign_in()
+        app = self.server.app
+        for missing in ("ffmpeg", "ffprobe"):
+            with self.subTest(missing=missing):
+                def find(name, override=None, missing=missing):
+                    if name == missing:
+                        raise tools.ToolError(f"{name} was not found.", tools.INSTALL_HINT)
+                    return self.dir / f"{name}.exe"
+
+                with mock.patch.object(tools, "find_tool", side_effect=find):
+                    app.find_tools()
+                found = "ffprobe" if missing == "ffmpeg" else "ffmpeg"
+                shown = self.state()["tools"]
+                self.assertEqual((shown[missing], shown[found], shown["mediainfo"]),
+                                 ("", str(self.dir / f"{found}.exe"), str(self.dir / "mediainfo.exe")))
+                self.assertEqual(shown["errors"], {missing: f"{missing} was not found."})
+                self.assertIsNone(app.ffmpeg)  # contact sheets need both
+                self.assertIn("FFmpeg or MediaInfo is missing", self.post("/api/start", {}, 409)["error"])
+        script = (web.web_dir() / "app.js").read_text(encoding="utf-8")
+        self.assertIn('row("ffprobe", t.ffprobe, t.errors.ffprobe)', script)
+        self.assertIn('ffprobe: DOWNLOADS.ffmpeg', script)  # ffprobe comes with FFmpeg's download
+
+    def test_uploads_that_wait_for_staff_say_so(self):
+        app = self.server.app
+        self.assertFalse(app.options().waits_for_staff)  # this account's uploads skip the moderation queue ...
+        app.settings.mod_queue = True
+        self.assertTrue(app.options().waits_for_staff)  # ... unless sent there anyway
+        app.settings.mod_queue = False
+        app.user["upload"]["skips_moderation"] = False
+        self.assertTrue(app.options().waits_for_staff)
+        # The finished row says so instead of the site's "Torrent uploaded successfully.".
+        job = self.add_job(state="done")
+        job.result = pipeline.Result(job.item.target, True, pipeline.WAITS_FOR_STAFF, "t", f"{self.site.url}/torrents/77",
+                                     waits_for_staff=True)
+        job.message = job.result.message
+        view = app.job_view(job, app.options())
+        self.assertEqual((view["state"], view["message"], view["waits_for_staff"]), ("done", "Uploaded: waits for staff approval", True))
+        script = (web.web_dir() / "app.js").read_text(encoding="utf-8")
+        self.assertIn("job.waits_for_staff ? `${esc(job.message)}${page ? ` (${page})` : \"\"}`", script)
+
+    def test_account_hint_says_what_happens_to_the_sites_torrent(self):
+        # The tool doesn't seed: it saves the site's .torrent, puts it in the watch folder or hands it to qBittorrent.
+        page = (web.web_dir() / "index.html").read_text(encoding="utf-8")
+        hint = re.search(r'<div class="hint">Paste the announce URL once:(.*?)</div>', page, re.S).group(1)
+        self.assertNotRegex(hint, r"tool seeds|seeds that one")
+        self.assertIn("the tool saves it, puts it in your watch folder or hands it to qBittorrent", hint)
+
+    def test_output_folder_box_shows_its_whole_placeholder(self):
+        # At 1400 px the box shows about 22 characters: "next to each video (clearjav-uploads)" was cut off. The folder's
+        # name is in the hint under it.
+        page = (web.web_dir() / "index.html").read_text(encoding="utf-8")
+        box = re.search(r'<input [^>]*id="optOutputDir"[^>]*>', page).group(0)
+        self.assertLessEqual(len(re.search(r'placeholder="([^"]*)"', box).group(1)), 20)
+        self.assertIn('aria-describedby="optOutputDirHint"', box)
+        self.assertIn('id="optOutputDirHint">empty: in a clearjav-uploads folder next to each video<', page)
 
     def test_every_control_has_a_name(self):
         # Screen readers (and tools that read the page) announced bare checkboxes as "on": every input and select

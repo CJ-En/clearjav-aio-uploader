@@ -145,8 +145,9 @@ def cmd_upload(args: argparse.Namespace, settings: config.Settings, interactive:
         check_permissions(user.get("upload"), opts)
     if client and not args.dry_run:
         flags = user.get("upload") or {}
+        opts.waits_for_staff = pipeline.waits_for_staff(flags, opts.mod_queue)
         queue = ("" if "skips_moderation" not in flags else
-                 ", uploads go live at once" if flags["skips_moderation"] and not opts.mod_queue else ", uploads wait for moderation")
+                 ", uploads wait for moderation" if opts.waits_for_staff else ", uploads go live at once")
         print(f"Uploading as {user.get('username')} ({user.get('group')}){queue}" + (", anonymous" if opts.anonymous else ""))
         if opts.seed == "qbittorrent" and settings.qbittorrent_url:
             opts.qbittorrent = (settings.qbittorrent_url, settings.qbittorrent_user,
@@ -162,8 +163,10 @@ def cmd_upload(args: argparse.Namespace, settings: config.Settings, interactive:
             results.append(result)
             if result.ok:
                 print(f"    {'Ready' if args.dry_run else 'Uploaded'}: {result.title}")
-                if result.page:
+                if result.page:  # the site's message, or "Uploaded: waits for staff approval"
                     print(f"    {result.page}  ({result.message})")
+                elif result.waits_for_staff:
+                    print(f"    {result.message}")
                 if result.seed_torrent:
                     print(f"    Seed this torrent: {result.seed_torrent}")
             else:

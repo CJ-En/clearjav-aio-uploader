@@ -110,5 +110,30 @@ class IconTest(unittest.TestCase):
                 self.make_icon.polygons(path, 1)
 
 
+class ReadmeTest(unittest.TestCase):
+    """What the READMEs must tell members."""
+
+    @staticmethod
+    def text(path: Path) -> str:
+        return " ".join(path.read_text(encoding="utf-8").split())  # lines joined: a sentence may wrap anywhere
+
+    def test_smart_app_control_blocks_the_windows_program(self):
+        # It blocks unsigned programs completely ("Run anyway" isn't offered): the source version still works.
+        for path in (ROOT / "README.md", HERE / "README-windows.txt"):
+            text = self.text(path)
+            self.assertRegex(text, r"Smart App Control\W* on, the unsigned program is blocked completely \(there is no \"Run anyway\"\)",
+                             path.name)
+            self.assertRegex(text, r"Smart App Control.{0,200}run\.bat", path.name)
+
+    def test_the_changes_of_this_version(self):
+        from clearjav_aio import __version__
+
+        text = (ROOT / "README.md").read_text(encoding="utf-8")
+        self.assertIn(f"\n## Changes in {__version__}\n", text)
+        self.assertIn("Contact sheets work with FFmpeg 9.1.", text)
+        # The account panel's text in the README: the tool doesn't seed the site's .torrent itself.
+        self.assertNotIn("that one is seeded", text)
+
+
 if __name__ == "__main__":
     unittest.main()
